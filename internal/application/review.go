@@ -300,7 +300,7 @@ func (s *Service) VerifyPermit(ctx context.Context, number string, requestedAsse
 	if len(requestedAsset) > 0 && strings.TrimSpace(requestedAsset[0]) != "" && !domain.ValidAssetCode(domain.NormalizeAssetCode(requestedAsset[0])) {
 		return Verification{}, domain.NewRuleError("invalid_asset_code", "待核对设备编号格式无效")
 	}
-	c, err := s.repo.FindPermit(ctx, number)
+	c, err := s.findPermit(ctx, number)
 	if err != nil {
 		if err == domain.ErrNotFound {
 			return Verification{Valid: false, CheckedAt: now, Status: "not_found", Message: "许可不存在", Failures: []string{"许可编号核对失败"}}, nil

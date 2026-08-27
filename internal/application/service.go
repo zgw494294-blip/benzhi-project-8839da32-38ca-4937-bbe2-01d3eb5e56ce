@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"stage-rigging-safety-release/internal/domain"
@@ -16,12 +17,34 @@ import (
 )
 
 type Service struct {
-	repo storage.Repository
-	now  func() time.Time
+	repo        storage.Repository
+	now         func() time.Time
+	permitMu    sync.Mutex
+	permitCache map[string]permitLookup
 }
 
 func New(repo storage.Repository) *Service {
-	return &Service{repo: repo, now: func() time.Time { return time.Now().UTC() }}
+	return &Service{repo: repo, now: func() time.Time { return time.Now().UTC() }, permitCache: map[string]permitLookup{}}
+}
+
+type permitLookup struct {
+	campaign *domain.InspectionCampaign
+	err      error
+}
+
+func (s *Service) findPermit(ctx context.Context, number string) (*domain.InspectionCampaign, error) {
+	s.permitMu.Lock()
+	if cached, ok := s.permitCache[number]; ok {
+		s.permitMu.Unlock()
+		return cached.campaign, cached.err
+	}
+	s.permitMu.Unlock()
+
+	campaign, err := s.repo.FindPermit(ctx, number)
+	s.permitMu.Lock()
+	s.permitCache[number] = permitLookup{campaign: campaign, err: err}
+	s.permitMu.Unlock()
+	return campaign, err
 }
 
 type CampaignView struct {
