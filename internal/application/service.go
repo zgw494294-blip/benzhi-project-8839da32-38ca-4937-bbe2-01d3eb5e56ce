@@ -123,7 +123,9 @@ func (s *Service) makeView(c *domain.InspectionCampaign) CampaignView {
 func (s *Service) mutate(ctx context.Context, id string, m Metadata, op string, fn storage.Mutation) (*domain.InspectionCampaign, error) {
 	c, _, err := s.repo.Mutate(ctx, id, m.ExpectedVersion, m.IdempotencyKey, op, m.Actor, m.Role, fn)
 	if err != nil {
-		_ = s.repo.AppendDecision(ctx, id, auditOperation(op), m.Actor, m.Role, false, err.Error(), m.ExpectedVersion)
+		if auditErr := s.repo.AppendDecision(ctx, id, auditOperation(op), m.Actor, m.Role, false, err.Error(), m.ExpectedVersion); auditErr != nil {
+			return nil, fmt.Errorf("记录拒绝审计失败: %w", auditErr)
+		}
 	}
 	return c, err
 }
