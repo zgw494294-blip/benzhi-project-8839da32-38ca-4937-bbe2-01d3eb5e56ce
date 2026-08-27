@@ -49,6 +49,16 @@ func (s *SQLiteStore) List(ctx context.Context) ([]domain.InspectionCampaign, er
 		if err != nil {
 			return nil, err
 		}
+		if campaign.Status == domain.StatusLicensed {
+			var indexedCampaignID string
+			err = s.db.QueryRowContext(ctx, `SELECT campaign_id FROM permits WHERE permit_number=?`, campaign.Permit.PermitNumber).Scan(&indexedCampaignID)
+			if err != nil {
+				return nil, fmt.Errorf("核对许可索引: %w", err)
+			}
+			if indexedCampaignID != campaign.ID {
+				return nil, fmt.Errorf("%w: 许可索引与任务不一致", domain.ErrValidation)
+			}
+		}
 		result = append(result, *campaign)
 	}
 	return result, rows.Err()
