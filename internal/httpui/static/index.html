@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>吊挂安全检验工作台</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header><div><p class="eyebrow">STAGE RIGGING · ANNUAL RELEASE</p><h1>吊挂安全检验工作台</h1></div><div id="serviceState" class="pill">正在连接…</div></header>
+  <main>
+    <aside>
+      <button id="newCampaign" class="primary">＋ 新建年度任务</button>
+      <h2>检验任务</h2><div id="campaignList" class="campaign-list"></div>
+      <div class="permit-verify"><h2>许可验真</h2><label>许可编号<input id="verifyNumber" placeholder="RIG-2026-…"></label><label>设备编号（可选）<input id="verifyAsset" placeholder="DG-01"></label><button id="verifyPermit">查询许可</button><div id="verifyResult" class="muted"></div></div>
+    </aside>
+    <section id="workspace">
+      <div class="welcome"><span class="signal">✓</span><h2>从设备范围到启用许可</h2><p>选择任务，按设备登记、方案锁定、实测、整改、复核、冻结与签发顺序完成年度闭环。</p></div>
+    </section>
+  </main>
+  <dialog id="modal"><form method="dialog" id="modalForm"><div class="dialog-head"><h2 id="modalTitle"></h2><button value="cancel" aria-label="关闭">×</button></div><div id="modalFields"></div><menu><button value="cancel">取消</button><button id="modalSubmit" value="default" class="primary">提交</button></menu></form></dialog>
+  <div id="toast" role="status"></div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
