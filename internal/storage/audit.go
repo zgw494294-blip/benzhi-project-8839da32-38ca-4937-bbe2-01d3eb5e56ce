@@ -12,6 +12,9 @@ import (
 
 func (s *SQLiteStore) insertAudit(ctx context.Context, tx *sql.Tx, campaignID, action, actor, role string, version int, accepted bool, reason string, details []byte) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO audit_events(campaign_id,action,actor,role,version,accepted,reason,details,occurred_at) VALUES(?,?,?,?,?,?,?,?,?)`, campaignID, action, actor, role, version, accepted, reason, details, s.now().Format(timeFormat))
+	if err == nil {
+		delete(s.timelineCache, campaignID)
+	}
 	return err
 }
 
@@ -28,6 +31,9 @@ func (s *SQLiteStore) AppendDecision(ctx context.Context, campaignID, action, ac
 }
 
 func (s *SQLiteStore) Timeline(ctx context.Context, campaignID string) ([]domain.AuditEvent, error) {
+	if cached, ok := s.timelineCache[campaignID]; ok {
+		return cloneAuditEvents(cached), nil
+	}
 	rows, err := s.db.QueryContext(ctx, `SELECT sequence,campaign_id,action,actor,role,version,accepted,reason,details,occurred_at FROM audit_events WHERE campaign_id=? ORDER BY sequence`, campaignID)
 	if err != nil {
 		return nil, fmt.Errorf("查询审计时间线: %w", err)
@@ -47,5 +53,21 @@ func (s *SQLiteStore) Timeline(ctx context.Context, campaignID string) ([]domain
 		e.OccurredAt, _ = time.Parse(timeFormat, occurred)
 		result = append(result, e)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	s.timelineCache[campaignID] = cloneAuditEvents(result)
+	return result, nil
+}
+
+func cloneAuditEvents(events []domain.AuditEvent) []domain.AuditEvent {
+	cloned := make([]domain.AuditEvent, len(events))
+	copy(cloned, events)
+	for i := range cloned {
+		cloned[i].Details = append(json.RawMessage(nil), events[i].Details...)
+	}
+	return cloned
 }

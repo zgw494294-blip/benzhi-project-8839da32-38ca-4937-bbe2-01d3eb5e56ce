@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"time"
 
+	"stage-rigging-safety-release/internal/domain"
+
 	_ "modernc.org/sqlite"
 )
 
 type SQLiteStore struct {
-	db  *sql.DB
-	now func() time.Time
+	db            *sql.DB
+	now           func() time.Time
+	timelineCache map[string][]domain.AuditEvent
 }
 
 func Open(path string) (*SQLiteStore, error) {
@@ -25,7 +28,7 @@ func Open(path string) (*SQLiteStore, error) {
 	}
 	db.SetMaxOpenConns(1)
 	db.SetConnMaxLifetime(0)
-	s := &SQLiteStore{db: db, now: func() time.Time { return time.Now().UTC() }}
+	s := &SQLiteStore{db: db, now: func() time.Time { return time.Now().UTC() }, timelineCache: map[string][]domain.AuditEvent{}}
 	if err := s.migrate(context.Background()); err != nil {
 		db.Close()
 		return nil, err
