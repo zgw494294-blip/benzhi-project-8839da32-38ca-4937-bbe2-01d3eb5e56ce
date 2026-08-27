@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"stage-rigging-safety-release/internal/domain"
@@ -16,12 +17,14 @@ import (
 )
 
 type Service struct {
-	repo storage.Repository
-	now  func() time.Time
+	repo         storage.Repository
+	now          func() time.Time
+	previewMu    sync.Mutex
+	previewCache map[string]FreezePreview
 }
 
 func New(repo storage.Repository) *Service {
-	return &Service{repo: repo, now: func() time.Time { return time.Now().UTC() }}
+	return &Service{repo: repo, now: func() time.Time { return time.Now().UTC() }, previewCache: make(map[string]FreezePreview)}
 }
 
 type CampaignView struct {

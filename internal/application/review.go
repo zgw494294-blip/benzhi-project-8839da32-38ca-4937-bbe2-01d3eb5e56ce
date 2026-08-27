@@ -205,6 +205,15 @@ type FreezePreview struct {
 }
 
 func (s *Service) freezePreview(c *domain.InspectionCampaign) (FreezePreview, error) {
+	s.previewMu.Lock()
+	if s.previewCache == nil {
+		s.previewCache = make(map[string]FreezePreview)
+	}
+	if cached, ok := s.previewCache[c.ID]; ok {
+		s.previewMu.Unlock()
+		return cached, nil
+	}
+	s.previewMu.Unlock()
 	plan, ok := c.ActivePlan()
 	if !ok {
 		return FreezePreview{}, domain.NewRuleError("plan_required", "缺少锁定方案")
@@ -220,7 +229,11 @@ func (s *Service) freezePreview(c *domain.InspectionCampaign) (FreezePreview, er
 		return FreezePreview{}, err
 	}
 	counts := map[string]int{"assets": len(snapshot.Assets), "checkpoints": len(snapshot.Plan.Checkpoints), "finalMeasurements": len(snapshot.Measurements), "defects": len(snapshot.Defects), "reviewRounds": len(snapshot.ReviewHistory)}
-	return FreezePreview{CanFreeze: len(issues) == 0, CandidateDigest: digest, MaterialCounts: counts, Snapshot: snapshot, Issues: issues}, nil
+	preview := FreezePreview{CanFreeze: len(issues) == 0, CandidateDigest: digest, MaterialCounts: counts, Snapshot: snapshot, Issues: issues}
+	s.previewMu.Lock()
+	s.previewCache[c.ID] = preview
+	s.previewMu.Unlock()
+	return preview, nil
 }
 
 func (s *Service) PreviewFreeze(ctx context.Context, id string) (FreezePreview, error) {
