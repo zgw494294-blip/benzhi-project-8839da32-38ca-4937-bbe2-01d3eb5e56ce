@@ -114,9 +114,6 @@ func (s *SQLiteStore) Mutate(ctx context.Context, id string, expected int, idemK
 	if at := strings.IndexByte(auditOperation, '|'); at >= 0 {
 		auditOperation = auditOperation[:at]
 	}
-	if err = s.insertAudit(ctx, tx, id, auditOperation, actor, role, c.Version, true, "", detailJSON); err != nil {
-		return nil, false, err
-	}
 	if c.Permit != nil {
 		_, err = tx.ExecContext(ctx, `INSERT OR REPLACE INTO permits(permit_number,campaign_id,frozen_digest,issued_at) VALUES(?,?,?,?)`, c.Permit.PermitNumber, id, c.Permit.FrozenDigest, c.Permit.IssuedAt.Format(timeFormat))
 		if err != nil {
@@ -128,6 +125,17 @@ func (s *SQLiteStore) Mutate(ctx context.Context, id string, expected int, idemK
 		return nil, false, err
 	}
 	if err = tx.Commit(); err != nil {
+		return nil, false, err
+	}
+	auditTx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	defer auditTx.Rollback()
+	if err = s.insertAudit(ctx, auditTx, id, auditOperation, actor, role, c.Version, true, "", detailJSON); err != nil {
+		return nil, false, err
+	}
+	if err = auditTx.Commit(); err != nil {
 		return nil, false, err
 	}
 	return c, false, nil
