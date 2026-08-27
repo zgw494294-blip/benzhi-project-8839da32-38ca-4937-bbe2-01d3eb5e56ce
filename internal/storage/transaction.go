@@ -54,7 +54,9 @@ func (s *SQLiteStore) Mutate(ctx context.Context, id string, expected int, idemK
 	if idemKey == "" {
 		return nil, false, domain.NewRuleError("idempotency_required", "写操作必须提供 idempotencyKey")
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	// 许可签发会在主事务提交后刷新许可查询索引，因此事务不能被
+	// 请求取消提前回滚，否则已经生成的许可响应无法用于后续刷新。
+	tx, err := s.db.BeginTx(context.WithoutCancel(ctx), nil)
 	if err != nil {
 		return nil, false, err
 	}
@@ -92,6 +94,10 @@ func (s *SQLiteStore) Mutate(ctx context.Context, id string, expected int, idemK
 	if err != nil {
 		return nil, false, err
 	}
+	writeCtx := ctx
+	if c.Permit != nil {
+		writeCtx = context.WithoutCancel(ctx)
+	}
 	if err = c.ValidateReferences(); err != nil {
 		return nil, false, err
 	}
@@ -101,7 +107,7 @@ func (s *SQLiteStore) Mutate(ctx context.Context, id string, expected int, idemK
 	if err != nil {
 		return nil, false, err
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE campaigns SET version=?,status=?,data=?,updated_at=? WHERE id=? AND version=?`, c.Version, c.Status, data, c.UpdatedAt.Format(timeFormat), id, expected)
+	result, err := tx.ExecContext(writeCtx, `UPDATE campaigns SET version=?,status=?,data=?,updated_at=? WHERE id=? AND version=?`, c.Version, c.Status, data, c.UpdatedAt.Format(timeFormat), id, expected)
 	if err != nil {
 		return nil, false, err
 	}
@@ -114,21 +120,21 @@ func (s *SQLiteStore) Mutate(ctx context.Context, id string, expected int, idemK
 	if at := strings.IndexByte(auditOperation, '|'); at >= 0 {
 		auditOperation = auditOperation[:at]
 	}
-	if err = s.insertAudit(ctx, tx, id, auditOperation, actor, role, c.Version, true, "", detailJSON); err != nil {
+	if err = s.insertAudit(writeCtx, tx, id, auditOperation, actor, role, c.Version, true, "", detailJSON); err != nil {
 		return nil, false, err
 	}
-	if c.Permit != nil {
-		_, err = tx.ExecContext(ctx, `INSERT OR REPLACE INTO permits(permit_number,campaign_id,frozen_digest,issued_at) VALUES(?,?,?,?)`, c.Permit.PermitNumber, id, c.Permit.FrozenDigest, c.Permit.IssuedAt.Format(timeFormat))
-		if err != nil {
-			return nil, false, err
-		}
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO idempotency(campaign_id,idem_key,operation,response,created_at) VALUES(?,?,?,?,?)`, id, idemKey, operation, data, s.now().Format(timeFormat))
+	_, err = tx.ExecContext(writeCtx, `INSERT INTO idempotency(campaign_id,idem_key,operation,response,created_at) VALUES(?,?,?,?,?)`, id, idemKey, operation, data, s.now().Format(timeFormat))
 	if err != nil {
 		return nil, false, err
 	}
 	if err = tx.Commit(); err != nil {
 		return nil, false, err
+	}
+	if c.Permit != nil {
+		_, err = s.db.ExecContext(ctx, `INSERT OR REPLACE INTO permits(permit_number,campaign_id,frozen_digest,issued_at) VALUES(?,?,?,?)`, c.Permit.PermitNumber, id, c.Permit.FrozenDigest, c.Permit.IssuedAt.Format(timeFormat))
+		if err != nil {
+			return nil, false, err
+		}
 	}
 	return c, false, nil
 }
